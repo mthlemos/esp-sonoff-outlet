@@ -12,8 +12,12 @@
 // Which logical level correspond to pressed button
 #define BUTTON_ACTIVE_LEVEL 0
 
-#define ACCESSORY_NAME "Sonoff Outlet"
+#define SWITCH_GPIO 4
+// Which logical level correspond to switch closed switch (0 or 1)
+#define SWITCH_ACTIVE_LEVEL 0
+
+#define ACCESSORY_NAME "Sonoff Mini"
 #define ACCESSORY_SETUP_CODE "052-58-476"
 
-#define WIFI_AP_NAME "sonoff-outlet"
-#define WIFI_AP_PASSWORD "k8xYngeW"
+#define WIFI_AP_NAME "sonoff-mini"
+#define WIFI_AP_PASSWORD "miniwifi123"

@@ -33,18 +33,20 @@
 #include <homekit/characteristics.h>
 #include <wifi_config.h>
 #include <button.h>
+#include <toggle.h>
 #include <led_status.h>
 #include <ota-tftp.h>
 
 #include "config.h"
 
-// The GPIO pin that is connected to the relay on the Sonoff S26
+// The GPIO pin that is connected to the relay on the Sonoff Mini
 const int relay_gpio = RELAY_GPIO;
-// The GPIO pin that is connected to the LED on the Sonoff S26
+// The GPIO pin that is connected to the LED on the Sonoff Mini
 const int led_gpio = LED_GPIO;
-// The GPIO pin that is oconnected to the button on the Sonoff S26
+// The GPIO pin that is oconnected to the button on the Sonoff Mini
 const int button_gpio = BUTTON_GPIO;
-
+// The GPIO pin that is connected to the switch on the Sonoff Mini
+const int switch_gpio = SWITCH_GPIO;
 
 // one short blink every 3 seconds
 led_status_pattern_t mode_normal = LED_STATUS_PATTERN({100, -2900});
@@ -65,6 +67,7 @@ static led_status_t status;
 
 void switch_on_callback(homekit_accessory_t *acc, homekit_characteristic_t *_ch, homekit_value_t on, void *context);
 void button_callback(button_event_t event, void *_context);
+void toggle_callback(bool high, void *_context);
 
 void relay_write(bool on) {
     gpio_write(relay_gpio, on ? 1 : 0);
@@ -132,6 +135,15 @@ void button_callback(button_event_t event, void *_context) {
     }
 }
 
+void toggle_callback(bool high, void *context) {
+	// Since switch goes to ground when on, high = true is actually false
+	bool toggle_value = !high;
+    printf("Turning relay %s\n", toggle_value ? "on" : "off");
+	switch_on.value.bool_value = toggle_value;
+	relay_write(toggle_value);
+	homekit_characteristic_notify(&switch_on, switch_on.value);
+}
+
 void switch_identify(homekit_value_t _value) {
     printf("Switch identify\n");
     led_status_signal(status, &mode_identify);
@@ -140,20 +152,19 @@ void switch_identify(homekit_value_t _value) {
 homekit_characteristic_t name = HOMEKIT_CHARACTERISTIC_(NAME, "Sonoff Outlet");
 
 homekit_accessory_t *accessories[] = {
-    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_outlet, .services=(homekit_service_t*[]){
+    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_switch, .services=(homekit_service_t*[]){
         HOMEKIT_SERVICE(ACCESSORY_INFORMATION, .characteristics=(homekit_characteristic_t*[]){
             &name,
-            HOMEKIT_CHARACTERISTIC(MANUFACTURER, "iTEAD"),
+            HOMEKIT_CHARACTERISTIC(MANUFACTURER, "Sonoff"),
             HOMEKIT_CHARACTERISTIC(SERIAL_NUMBER, "037A2BABF19E"),
-            HOMEKIT_CHARACTERISTIC(MODEL, "S26"),
+            HOMEKIT_CHARACTERISTIC(MODEL, "Mini"),
             HOMEKIT_CHARACTERISTIC(FIRMWARE_REVISION, "0.1.6"),
             HOMEKIT_CHARACTERISTIC(IDENTIFY, switch_identify),
             NULL
         }),
         HOMEKIT_SERVICE(OUTLET, .primary=true, .characteristics=(homekit_characteristic_t*[]){
-            HOMEKIT_CHARACTERISTIC(NAME, "Sonoff Outlet"),
+            HOMEKIT_CHARACTERISTIC(NAME, "Sonoff Mini"),
             &switch_on,
-            HOMEKIT_CHARACTERISTIC(OUTLET_IN_USE, true),
             NULL
         }),
         NULL
@@ -214,15 +225,8 @@ bool wifi_is_configured() {
     return true;
 }
 
-void user_init(void) {
-    uart_set_baud(0, 115200);
-
-    relay_init();
-    status = led_status_init(led_gpio, LED_ACTIVE_LEVEL);
-
-    create_accessory_name();
-
-    button_config_t button_config = BUTTON_CONFIG(
+void button_switch_init() {
+	button_config_t button_config = BUTTON_CONFIG(
         (BUTTON_ACTIVE_LEVEL) ? button_active_high : button_active_low,
         .max_repeat_presses=2,
         .long_press_time=5000,
@@ -230,6 +234,22 @@ void user_init(void) {
     if (button_create(button_gpio, button_config, button_callback, NULL)) {
         printf("Failed to initialize button\n");
     }
+	
+	if (toggle_create(switch_gpio, toggle_callback, NULL)) {
+		printf("Failed to initialize toggle\n");
+	}
+}
+
+void user_init(void) {
+    uart_set_baud(0, 115200);
+
+    relay_init();
+    status = led_status_init(led_gpio, LED_ACTIVE_LEVEL);
+
+    create_accessory_name();
+	
+	// Init switch and button
+	button_switch_init();
 
     wifi_config_init2(WIFI_AP_NAME, WIFI_AP_PASSWORD, on_wifi_config_event);
 
